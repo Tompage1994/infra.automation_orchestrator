@@ -1,0 +1,63 @@
+---
+- name: Skip when AO_HOST is not set
+  ansible.builtin.meta: end_host
+  when: lookup('env', 'AO_HOST') | default('') == ''
+
+- name: Set connection variables
+  ansible.builtin.set_fact:
+    ao_host: "{{ lookup('env', 'AO_HOST') }}"
+    ao_username: "{{ lookup('env', 'AO_USERNAME') }}"
+    ao_password: "{{ lookup('env', 'AO_PASSWORD') }}"
+    ao_validate_certs: "{{ lookup('env', 'AO_VALIDATE_CERTS') | default('false', true) | bool }}"
+
+- name: Create a random identifier
+  ansible.builtin.set_fact:
+    test_project_name: "ansible-it-{{ 999999 | random }}"
+
+- name: Create a project
+  infra.automation_orchestrator.project:
+    orchestrator_host: "{{ ao_host }}"
+    orchestrator_username: "{{ ao_username }}"
+    orchestrator_password: "{{ ao_password }}"
+    validate_certs: "{{ ao_validate_certs }}"
+    name: "{{ test_project_name }}"
+    description: integration test
+    state: present
+  register: project_create
+
+- name: Assert project was created
+  ansible.builtin.assert:
+    that:
+      - project_create.changed
+      - project_create.id is defined
+
+- name: Update the project idempotently
+  infra.automation_orchestrator.project:
+    orchestrator_host: "{{ ao_host }}"
+    orchestrator_username: "{{ ao_username }}"
+    orchestrator_password: "{{ ao_password }}"
+    validate_certs: "{{ ao_validate_certs }}"
+    name: "{{ test_project_name }}"
+    description: integration test
+    state: present
+  register: project_update
+
+- name: Assert project update is idempotent
+  ansible.builtin.assert:
+    that:
+      - not project_update.changed
+
+- name: Delete the project
+  infra.automation_orchestrator.project:
+    orchestrator_host: "{{ ao_host }}"
+    orchestrator_username: "{{ ao_username }}"
+    orchestrator_password: "{{ ao_password }}"
+    validate_certs: "{{ ao_validate_certs }}"
+    name: "{{ test_project_name }}"
+    state: absent
+  register: project_delete
+
+- name: Assert project was deleted
+  ansible.builtin.assert:
+    that:
+      - project_delete.changed

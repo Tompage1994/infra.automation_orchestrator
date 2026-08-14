@@ -1,0 +1,22 @@
+#SPDX-License-Identifier: GPL-2.0-or-later
+namespace: infra
+name: automation_orchestrator
+version: 0.0.1
+readme: README.md
+authors:
+  - Tom Page <tpage@redhat.com>
+description: Ansible modules and plugins for Red Hat Ansible Automation Orchestrator
+license:
+  - GPL-2.0-or-later
+tags:
+  - automation
+  - orchestrator
+  - aap
+dependencies: {}
+repository: https://github.com/ansible-automation-platform/automation-orchestrator
+documentation: https://github.com/ansible-automation-platform/automation-orchestrator/tree/main/nexus-docs
+homepage: https://github.com/ansible-automation-platform/automation-orchestrator
+issues: https://github.com/ansible-automation-platform/automation-orchestrator/issues
+build_ignore:
+  - tests/output
+  - .gitignore

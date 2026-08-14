@@ -1,0 +1,12 @@
+# Changelog for infra.automation_orchestrator
+
+ancestor: null
+releases:
+  0.0.1:
+    release_date: '2026-08-14'
+    changes:
+      release_summary: Initial development release of the Automation Orchestrator collection.
+      major_changes:
+        - Added orchestrator_api module utilities with JWT authentication and cursor pagination.
+        - Added project, workflow, credential, integration, and execution_launch modules.
+        - Added orchestrator_api lookup plugin.

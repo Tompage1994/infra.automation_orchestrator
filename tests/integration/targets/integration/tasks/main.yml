@@ -1,0 +1,67 @@
+---
+- name: Skip when AO_HOST is not set
+  ansible.builtin.meta: end_host
+  when: lookup('env', 'AO_HOST') | default('') == ''
+
+- name: Set connection variables
+  ansible.builtin.set_fact:
+    ao_host: "{{ lookup('env', 'AO_HOST') }}"
+    ao_username: "{{ lookup('env', 'AO_USERNAME') }}"
+    ao_password: "{{ lookup('env', 'AO_PASSWORD') }}"
+    ao_validate_certs: "{{ lookup('env', 'AO_VALIDATE_CERTS') | default('false', true) | bool }}"
+
+- name: Create a random identifier
+  ansible.builtin.set_fact:
+    test_name: "ansible-it-int-{{ 999999 | random }}"
+
+- name: Create an integration
+  infra.automation_orchestrator.integration:
+    orchestrator_host: "{{ ao_host }}"
+    orchestrator_username: "{{ ao_username }}"
+    orchestrator_password: "{{ ao_password }}"
+    validate_certs: "{{ ao_validate_certs }}"
+    name: "{{ test_name }}"
+    integration_type: mcp_server
+    description: integration test
+    configuration:
+      integration_type: mcp_server
+      base_url: https://example.com/mcp
+    state: present
+  register: integration_create
+
+- name: Assert integration was created
+  ansible.builtin.assert:
+    that:
+      - integration_create.changed
+      - integration_create.id is defined
+
+- name: Update the integration idempotently
+  infra.automation_orchestrator.integration:
+    orchestrator_host: "{{ ao_host }}"
+    orchestrator_username: "{{ ao_username }}"
+    orchestrator_password: "{{ ao_password }}"
+    validate_certs: "{{ ao_validate_certs }}"
+    name: "{{ test_name }}"
+    description: integration test
+    state: present
+  register: integration_update
+
+- name: Assert integration update is idempotent
+  ansible.builtin.assert:
+    that:
+      - not integration_update.changed
+
+- name: Delete the integration
+  infra.automation_orchestrator.integration:
+    orchestrator_host: "{{ ao_host }}"
+    orchestrator_username: "{{ ao_username }}"
+    orchestrator_password: "{{ ao_password }}"
+    validate_certs: "{{ ao_validate_certs }}"
+    name: "{{ test_name }}"
+    state: absent
+  register: integration_delete
+
+- name: Assert integration was deleted
+  ansible.builtin.assert:
+    that:
+      - integration_delete.changed
