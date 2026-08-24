@@ -46,6 +46,24 @@ def test_fields_could_be_same_encrypted():
     assert not OrchestratorAPIModule.fields_could_be_same("abc", "def")
 
 
+def test_objects_could_be_different_without_update_secrets_param():
+    params = {
+        "orchestrator_host": "https://orchestrator.example.com",
+        "orchestrator_token": "test-token",
+        "validate_certs": True,
+        "request_timeout": 30,
+    }
+    with patch.object(OrchestratorModule, "load_config_files"):
+        with patch(
+            "ansible_collections.infra.automation_orchestrator.plugins.module_utils.orchestrator_api.getaddrinfo"
+        ):
+            module = OrchestratorModule(argument_spec={}, direct_params=params)
+
+    assert module.update_secrets is False
+    assert module.objects_could_be_different({"name": "a"}, {"name": "b"})
+    assert not module.objects_could_be_different({"name": "a"}, {"name": "a"})
+
+
 def test_build_url(module_factory):
     module = module_factory()
     url = module.build_url("projects")

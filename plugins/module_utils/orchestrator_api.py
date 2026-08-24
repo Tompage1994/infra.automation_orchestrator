@@ -114,6 +114,7 @@ class OrchestratorModule(AnsibleModule):
         self.error_callback = error_callback
         self.warn_callback = warn_callback
         self.json_output = {"changed": False}
+        self.update_secrets = False
 
         if direct_params is not None:
             self.params = direct_params
@@ -306,7 +307,26 @@ class OrchestratorModule(AnsibleModule):
         except ConnectionError as con_err:
             self.fail_json(msg="There was a network error trying to connect to your host ({0}): {1}.".format(url.netloc, con_err))
         except HTTPError as http_err:
-            self.fail_json(msg="Unexpected HTTP error from host ({0}): {1}.".format(url.netloc, http_err))
+            try:
+                error_body = http_err.read()
+            except (OSError, AttributeError, ValueError):
+                error_body = b""
+            if error_body:
+                try:
+                    error_json = loads(error_body)
+                except ValueError:
+                    error_json = error_body.decode("utf-8", errors="replace")
+            else:
+                error_json = {}
+            detail = ""
+            if isinstance(error_json, dict):
+                detail = error_json.get("detail") or error_json.get("message") or ""
+            elif error_json:
+                detail = error_json
+            msg = "Unexpected HTTP error from host ({0}): {1}.".format(url.netloc, http_err)
+            if detail:
+                msg = "{0} {1}".format(msg, detail)
+            self.fail_json(msg=msg, status_code=getattr(http_err, "code", None), response=error_json)
 
         response_body = response.read()
         if response_body:

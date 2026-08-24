@@ -39,6 +39,7 @@ options:
   inputs:
     description:
       - Credential input values as defined by the credential type.
+      - Ansible Automation Platform credentials require C(host) plus either C(oauth_token) or C(username) and C(password).
       - Use V($encrypted$) for secret fields you want to preserve without changing.
     type: dict
   enabled:
@@ -76,6 +77,16 @@ EXAMPLES = r"""
     project: my-project
     inputs:
       token: "{{ vault_token }}"
+    state: present
+
+- name: Create an Ansible Automation Platform credential
+  infra.automation_orchestrator.credential:
+    name: aap-token
+    credential_type: Ansible Automation Platform
+    project: my-project
+    inputs:
+      host: https://aap.example.com
+      oauth_token: "{{ vault_aap_token }}"
     state: present
 
 - name: Update credential without changing the secret

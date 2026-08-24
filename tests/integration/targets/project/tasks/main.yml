@@ -9,6 +9,7 @@
     ao_username: "{{ lookup('env', 'AO_USERNAME') }}"
     ao_password: "{{ lookup('env', 'AO_PASSWORD') }}"
     ao_validate_certs: "{{ lookup('env', 'AO_VALIDATE_CERTS') | default('false', true) | bool }}"
+  no_log: true
 
 - name: Create a random identifier
   ansible.builtin.set_fact:

@@ -26,11 +26,12 @@ options:
     type: str
   integration_type:
     description:
-      - Integration type, such as C(aap_gateway), C(mcp_server), or C(llm_provider).
+      - Integration type, such as C(ansible_automation_platform), C(mcp_server), or C(llm_provider).
     type: str
   configuration:
     description:
       - Integration configuration object passed through to the API.
+      - Ansible Automation Platform integrations require C(aap_url). C(base_url) is accepted as an alias and rewritten to C(aap_url).
     type: dict
   description:
     description:
@@ -78,6 +79,16 @@ EXAMPLES = r"""
       base_url: https://llm.example.com/v1
     management_credential: api-token
     state: present
+
+- name: Create an Ansible Automation Platform integration
+  infra.automation_orchestrator.integration:
+    name: my-aap
+    integration_type: ansible_automation_platform
+    configuration:
+      integration_type: ansible_automation_platform
+      aap_url: https://aap.example.com
+    management_credential: aap-token
+    state: present
 """
 
 RETURN = r"""
@@ -98,6 +109,17 @@ def resolve_credential_id(module, credential):
     if module.is_uuid(credential):
         return credential
     return module.resolve_name_to_id("credentials", credential)
+
+
+def normalize_configuration(configuration, integration_type):
+    if not configuration:
+        return configuration
+    config = dict(configuration)
+    config_type = config.get("integration_type") or integration_type
+    if config_type in ("ansible_automation_platform", "aap_gateway") and "base_url" in config:
+        config.setdefault("aap_url", config["base_url"])
+        config.pop("base_url")
+    return config
 
 
 def main():
@@ -140,7 +162,10 @@ def main():
     if module.params["scope"] is not None:
         new_item["scope"] = module.params["scope"]
     if module.params["configuration"] is not None:
-        new_item["configuration"] = module.params["configuration"]
+        new_item["configuration"] = normalize_configuration(
+            module.params["configuration"],
+            module.params["integration_type"],
+        )
 
     if existing_item is None:
         new_item["integration_type"] = module.params["integration_type"]

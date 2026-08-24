@@ -9,17 +9,18 @@
     ao_username: "{{ lookup('env', 'AO_USERNAME') }}"
     ao_password: "{{ lookup('env', 'AO_PASSWORD') }}"
     ao_validate_certs: "{{ lookup('env', 'AO_VALIDATE_CERTS') | default('false', true) | bool }}"
+  no_log: true
 
 - name: Create a random identifier
   ansible.builtin.set_fact:
     test_name: "ansible-it-wf-{{ 999999 | random }}"
 
-- name: Define workflow definition
+- name: Define a two-node sequential workflow
   ansible.builtin.set_fact:
-    test_workflow_definition:
+    test_workflow_two_nodes:
       name: "{{ test_name }}"
       schema_version: "2.0.0"
-      description: workflow integration test
+      description: workflow integration test with two wait nodes
       triggers:
         - id: trigger_1
           name: Trigger
@@ -28,8 +29,60 @@
             x: 100
             y: 100
           parameters: {}
-      nodes: []
-      edges: []
+      nodes:
+        - id: wait_first
+          name: First wait
+          type: wait
+          parameters:
+            duration: 1
+        - id: wait_second
+          name: Second wait
+          type: wait
+          parameters:
+            duration: 1
+      edges:
+        - from: trigger_1
+          to: wait_first
+        - from: wait_first
+          to: wait_second
+
+- name: Define a three-node sequential workflow
+  ansible.builtin.set_fact:
+    test_workflow_three_nodes:
+      name: "{{ test_name }}"
+      schema_version: "2.0.0"
+      description: workflow integration test with three wait nodes
+      triggers:
+        - id: trigger_1
+          name: Trigger
+          type: manual_trigger
+          position:
+            x: 100
+            y: 100
+          parameters: {}
+      nodes:
+        - id: wait_first
+          name: First wait
+          type: wait
+          parameters:
+            duration: 1
+        - id: wait_second
+          name: Second wait
+          type: wait
+          parameters:
+            duration: 1
+        - id: wait_third
+          name: Third wait
+          type: wait
+          parameters:
+            duration: 1
+      edges:
+        - from: trigger_1
+          to: wait_first
+        - from: wait_first
+          to: wait_second
+        - from: wait_second
+          to: wait_third
 
 - name: Create a project for the workflow
   infra.automation_orchestrator.project:
@@ -48,7 +101,91 @@
       - project_create.changed
       - project_create.id is defined
 
-- name: Create a workflow
+- name: Create an HTTP Bearer Token credential for the MCP connection
+  infra.automation_orchestrator.credential:
+    orchestrator_host: "{{ ao_host }}"
+    orchestrator_username: "{{ ao_username }}"
+    orchestrator_password: "{{ ao_password }}"
+    validate_certs: "{{ ao_validate_certs }}"
+    name: "{{ test_name }}-mcp-cred"
+    project: "{{ test_name }}-project"
+    credential_type: HTTP Bearer Token
+    inputs:
+      token: integration-test-token
+    state: present
+  register: mcp_credential
+
+- name: Assert MCP credential was created
+  ansible.builtin.assert:
+    that:
+      - mcp_credential.changed
+      - mcp_credential.id is defined
+
+- name: Create an MCP server integration
+  infra.automation_orchestrator.integration:
+    orchestrator_host: "{{ ao_host }}"
+    orchestrator_username: "{{ ao_username }}"
+    orchestrator_password: "{{ ao_password }}"
+    validate_certs: "{{ ao_validate_certs }}"
+    name: "{{ test_name }}-mcp"
+    integration_type: mcp_server
+    description: workflow integration test MCP server
+    configuration:
+      integration_type: mcp_server
+      base_url: https://example.com/mcp
+    state: present
+  register: mcp_integration
+
+- name: Assert MCP integration was created
+  ansible.builtin.assert:
+    that:
+      - mcp_integration.changed
+      - mcp_integration.id is defined
+
+- name: Create an Ansible Automation Platform credential
+  infra.automation_orchestrator.credential:
+    orchestrator_host: "{{ ao_host }}"
+    orchestrator_username: "{{ ao_username }}"
+    orchestrator_password: "{{ ao_password }}"
+    validate_certs: "{{ ao_validate_certs }}"
+    name: "{{ test_name }}-aap-cred"
+    project: "{{ test_name }}-project"
+    credential_type: Ansible Automation Platform
+    inputs:
+      host: https://aap.example.com
+      oauth_token: integration-test-token
+    state: present
+  register: aap_credential
+
+- name: Assert AAP credential was created
+  ansible.builtin.assert:
+    that:
+      - aap_credential.changed
+      - aap_credential.id is defined
+
+- name: Create an Ansible Automation Platform integration
+  infra.automation_orchestrator.integration:
+    orchestrator_host: "{{ ao_host }}"
+    orchestrator_username: "{{ ao_username }}"
+    orchestrator_password: "{{ ao_password }}"
+    validate_certs: "{{ ao_validate_certs }}"
+    name: "{{ test_name }}-aap"
+    integration_type: ansible_automation_platform
+    description: workflow integration test AAP gateway
+    configuration:
+      integration_type: ansible_automation_platform
+      aap_url: https://aap.example.com
+    management_credential: "{{ test_name }}-aap-cred"
+    state: present
+  register: aap_integration
+
+- name: Assert AAP integration was created
+  ansible.builtin.assert:
+    that:
+      - aap_integration.changed
+      - aap_integration.id is defined
+
+- name: Create a workflow with two sequential nodes
   infra.automation_orchestrator.workflow:
     orchestrator_host: "{{ ao_host }}"
     orchestrator_username: "{{ ao_username }}"
@@ -56,8 +193,8 @@
     validate_certs: "{{ ao_validate_certs }}"
     name: "{{ test_name }}"
     project: "{{ test_name }}-project"
-    description: workflow integration test
-    workflow_definition: "{{ test_workflow_definition }}"
+    description: workflow integration test with two wait nodes
+    workflow_definition: "{{ test_workflow_two_nodes }}"
     state: present
   register: workflow_create
 
@@ -67,7 +204,19 @@
       - workflow_create.changed
       - workflow_create.id is defined
 
-- name: Update the workflow idempotently
+- name: Fetch the created workflow including its definition
+  ansible.builtin.set_fact:
+    created_workflow: "{{ query('infra.automation_orchestrator.orchestrator_api', 'workflows/' ~ workflow_create.id, host=ao_host, username=ao_username, password=ao_password, verify_ssl=ao_validate_certs) | first }}"
+
+- name: Assert created workflow has two sequential wait nodes
+  ansible.builtin.assert:
+    that:
+      - created_workflow.version.workflow_definition.nodes | length == 2
+      - created_workflow.version.workflow_definition.nodes | map(attribute='id') | list == ['wait_first', 'wait_second']
+      - created_workflow.version.workflow_definition.edges | length == 2
+      - not (created_workflow.has_validation_issues | default(false))
+
+- name: Update the workflow metadata idempotently
   infra.automation_orchestrator.workflow:
     orchestrator_host: "{{ ao_host }}"
     orchestrator_username: "{{ ao_username }}"
@@ -75,16 +224,161 @@
     validate_certs: "{{ ao_validate_certs }}"
     name: "{{ test_name }}"
     project: "{{ test_name }}-project"
-    description: workflow integration test
+    description: workflow integration test with two wait nodes
     state: present
   register: workflow_update
 
-- name: Assert workflow update is idempotent
+- name: Assert workflow metadata update is idempotent
   ansible.builtin.assert:
     that:
       - not workflow_update.changed
 
-- name: Delete the workflow
+- name: Add a third wait node to the workflow
+  infra.automation_orchestrator.workflow:
+    orchestrator_host: "{{ ao_host }}"
+    orchestrator_username: "{{ ao_username }}"
+    orchestrator_password: "{{ ao_password }}"
+    validate_certs: "{{ ao_validate_certs }}"
+    name: "{{ test_name }}"
+    project: "{{ test_name }}-project"
+    description: workflow integration test with three wait nodes
+    change_description: add wait_third node
+    workflow_definition: "{{ test_workflow_three_nodes }}"
+    state: present
+  register: workflow_add_node
+
+- name: Assert third node was added
+  ansible.builtin.assert:
+    that:
+      - workflow_add_node.changed
+      - workflow_add_node.workflow.version.workflow_definition.nodes | length == 3
+      - workflow_add_node.workflow.version.workflow_definition.nodes | map(attribute='id') | list == ['wait_first', 'wait_second', 'wait_third']
+      - workflow_add_node.workflow.version.workflow_definition.edges | length == 3
+      - not (workflow_add_node.workflow.has_validation_issues | default(false))
+
+- name: Remove the third wait node from the workflow
+  infra.automation_orchestrator.workflow:
+    orchestrator_host: "{{ ao_host }}"
+    orchestrator_username: "{{ ao_username }}"
+    orchestrator_password: "{{ ao_password }}"
+    validate_certs: "{{ ao_validate_certs }}"
+    name: "{{ test_name }}"
+    project: "{{ test_name }}-project"
+    description: workflow integration test with two wait nodes
+    change_description: remove wait_third node
+    workflow_definition: "{{ test_workflow_two_nodes }}"
+    state: present
+  register: workflow_remove_node
+
+- name: Assert third node was removed
+  ansible.builtin.assert:
+    that:
+      - workflow_remove_node.changed
+      - workflow_remove_node.workflow.version.workflow_definition.nodes | length == 2
+      - workflow_remove_node.workflow.version.workflow_definition.nodes | map(attribute='id') | list == ['wait_first', 'wait_second']
+      - workflow_remove_node.workflow.version.workflow_definition.edges | length == 2
+      - not (workflow_remove_node.workflow.has_validation_issues | default(false))
+
+- name: Define a mixed script, task agent, and AAP job template workflow
+  ansible.builtin.set_fact:
+    test_workflow_mixed:
+      name: "{{ test_name }}-mixed"
+      schema_version: "2.0.0"
+      description: workflow integration test with script, task agent, and AAP job template
+      triggers:
+        - id: trigger_1
+          name: Trigger
+          type: manual_trigger
+          position:
+            x: 100
+            y: 100
+          parameters: {}
+      nodes:
+        - id: run_script
+          name: Run script
+          type: script
+          parameters:
+            language: python
+            code: print('hello')
+        - id: analyze
+          name: Analyze
+          type: agentic
+          parameters:
+            prompt: Summarize the script output and recommend a job template.
+            tool_selection_strategy: NONE
+            integration_connections:
+              - integration_id: "{{ mcp_integration.id }}"
+                credential_id: "{{ mcp_credential.id }}"
+        - id: launch_job
+          name: Launch job template
+          type: aap_job_template
+          parameters:
+            integration_id: "{{ aap_integration.id }}"
+            credential_id: "{{ aap_credential.id }}"
+            job_template_name: Demo Job Template
+            organization_name: Default
+      edges:
+        - from: trigger_1
+          to: run_script
+        - from: run_script
+          to: analyze
+        - from: analyze
+          to: launch_job
+
+- name: Create a mixed-node workflow
+  infra.automation_orchestrator.workflow:
+    orchestrator_host: "{{ ao_host }}"
+    orchestrator_username: "{{ ao_username }}"
+    orchestrator_password: "{{ ao_password }}"
+    validate_certs: "{{ ao_validate_certs }}"
+    name: "{{ test_name }}-mixed"
+    project: "{{ test_name }}-project"
+    description: workflow integration test with script, task agent, and AAP job template
+    workflow_definition: "{{ test_workflow_mixed }}"
+    state: present
+  register: mixed_workflow_create
+
+- name: Assert mixed workflow was created
+  ansible.builtin.assert:
+    that:
+      - mixed_workflow_create.changed
+      - mixed_workflow_create.id is defined
+
+- name: Fetch the mixed workflow including its definition
+  ansible.builtin.set_fact:
+    mixed_workflow: "{{ query('infra.automation_orchestrator.orchestrator_api', 'workflows/' ~ mixed_workflow_create.id, host=ao_host, username=ao_username, password=ao_password, verify_ssl=ao_validate_certs) | first }}"
+
+- name: Assert mixed workflow graph and integration connections
+  ansible.builtin.assert:
+    that:
+      - mixed_workflow.version.workflow_definition.nodes | length == 3
+      - mixed_workflow.version.workflow_definition.nodes | map(attribute='id') | list == ['run_script', 'analyze', 'launch_job']
+      - mixed_workflow.version.workflow_definition.nodes | map(attribute='type') | list == ['script', 'agentic', 'aap_job_template']
+      - mixed_workflow.version.workflow_definition.nodes[1].parameters.integration_connections[0].integration_id == mcp_integration.id
+      - mixed_workflow.version.workflow_definition.nodes[1].parameters.integration_connections[0].credential_id == mcp_credential.id
+      - mixed_workflow.version.workflow_definition.nodes[2].parameters.credential_id == aap_credential.id
+      - mixed_workflow.version.workflow_definition.nodes[2].parameters.job_template_name == 'Demo Job Template'
+      - mixed_workflow.version.workflow_definition.nodes[2].parameters.organization_name == 'Default'
+      - mixed_workflow.version.workflow_definition.edges | length == 3
+      - not (mixed_workflow.has_validation_issues | default(false))
+
+- name: Delete the mixed workflow
+  infra.automation_orchestrator.workflow:
+    orchestrator_host: "{{ ao_host }}"
+    orchestrator_username: "{{ ao_username }}"
+    orchestrator_password: "{{ ao_password }}"
+    validate_certs: "{{ ao_validate_certs }}"
+    name: "{{ test_name }}-mixed"
+    project: "{{ test_name }}-project"
+    state: absent
+  register: mixed_workflow_delete
+
+- name: Assert mixed workflow was deleted
+  ansible.builtin.assert:
+    that:
+      - mixed_workflow_delete.changed
+
+- name: Delete the wait workflow
   infra.automation_orchestrator.workflow:
     orchestrator_host: "{{ ao_host }}"
     orchestrator_username: "{{ ao_username }}"
@@ -95,10 +389,72 @@
     state: absent
   register: workflow_delete
 
-- name: Assert workflow was deleted
+- name: Assert wait workflow was deleted
   ansible.builtin.assert:
     that:
       - workflow_delete.changed
+
+- name: Delete the MCP integration
+  infra.automation_orchestrator.integration:
+    orchestrator_host: "{{ ao_host }}"
+    orchestrator_username: "{{ ao_username }}"
+    orchestrator_password: "{{ ao_password }}"
+    validate_certs: "{{ ao_validate_certs }}"
+    name: "{{ test_name }}-mcp"
+    state: absent
+  register: mcp_integration_delete
+
+- name: Assert MCP integration was deleted
+  ansible.builtin.assert:
+    that:
+      - mcp_integration_delete.changed
+
+- name: Delete the AAP integration
+  infra.automation_orchestrator.integration:
+    orchestrator_host: "{{ ao_host }}"
+    orchestrator_username: "{{ ao_username }}"
+    orchestrator_password: "{{ ao_password }}"
+    validate_certs: "{{ ao_validate_certs }}"
+    name: "{{ test_name }}-aap"
+    state: absent
+  register: aap_integration_delete
+
+- name: Assert AAP integration was deleted
+  ansible.builtin.assert:
+    that:
+      - aap_integration_delete.changed
+
+- name: Delete the MCP credential
+  infra.automation_orchestrator.credential:
+    orchestrator_host: "{{ ao_host }}"
+    orchestrator_username: "{{ ao_username }}"
+    orchestrator_password: "{{ ao_password }}"
+    validate_certs: "{{ ao_validate_certs }}"
+    name: "{{ test_name }}-mcp-cred"
+    project: "{{ test_name }}-project"
+    state: absent
+  register: mcp_credential_delete
+
+- name: Assert MCP credential was deleted
+  ansible.builtin.assert:
+    that:
+      - mcp_credential_delete.changed
+
+- name: Delete the AAP credential
+  infra.automation_orchestrator.credential:
+    orchestrator_host: "{{ ao_host }}"
+    orchestrator_username: "{{ ao_username }}"
+    orchestrator_password: "{{ ao_password }}"
+    validate_certs: "{{ ao_validate_certs }}"
+    name: "{{ test_name }}-aap-cred"
+    project: "{{ test_name }}-project"
+    state: absent
+  register: aap_credential_delete
+
+- name: Assert AAP credential was deleted
+  ansible.builtin.assert:
+    that:
+      - aap_credential_delete.changed
 
 - name: Delete the project
   infra.automation_orchestrator.project:
