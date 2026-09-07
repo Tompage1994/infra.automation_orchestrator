@@ -11,47 +11,55 @@ __metaclass__ = type
 class ModuleDocFragment(object):
     DOCUMENTATION = r"""
 options:
-  orchestrator_host:
+  ao_host:
     description:
       - The URL of the Automation Orchestrator instance.
-      - Can also be set with the C(AO_HOST) environment variable.
+      - If not set, the value of the C(AO_HOST) environment variable is used.
     type: str
-    aliases: [ao_host]
-  orchestrator_username:
+  ao_username:
     description:
       - The username to authenticate with.
-      - Can also be set with the C(AO_USERNAME) environment variable.
+      - If not set, the value of the C(AO_USERNAME) environment variable is used.
     type: str
-    aliases: [ao_username]
-  orchestrator_password:
+  ao_password:
     description:
       - The password to authenticate with.
-      - Can also be set with the C(AO_PASSWORD) environment variable.
+      - If not set, the value of the C(AO_PASSWORD) environment variable is used.
     type: str
-    aliases: [ao_password]
-  orchestrator_token:
+  ao_token:
     description:
-      - JWT access token for Automation Orchestrator API authentication.
-      - Can also be set with the C(AO_TOKEN) environment variable.
-    type: raw
-    aliases: [ao_token, access_token]
-  validate_certs:
+      - A pre-existing access token for Automation Orchestrator API authentication.
+      - If not set, the value of the C(AO_TOKEN) environment variable is used.
+    type: str
+  ao_client_id:
+    description:
+      - OAuth 2.0 client ID for client_credentials authentication.
+      - If not set, the value of the C(AO_CLIENT_ID) environment variable is used.
+    type: str
+  ao_client_secret:
+    description:
+      - OAuth 2.0 client secret for client_credentials authentication.
+      - If not set, the value of the C(AO_CLIENT_SECRET) environment variable is used.
+    type: str
+  ao_validate_certs:
     description:
       - Whether to validate TLS certificates.
-      - Can also be set with the C(AO_VALIDATE_CERTS) environment variable.
+      - If not set, the value of the C(AO_VALIDATE_CERTS) environment variable is used.
     type: bool
     default: true
-    aliases: [ao_validate_certs]
-  request_timeout:
+  ao_request_timeout:
     description:
       - HTTP request timeout in seconds.
-      - Can also be set with the C(AO_REQUEST_TIMEOUT) environment variable.
+      - If not set, the value of the C(AO_REQUEST_TIMEOUT) environment variable is used.
     type: float
     default: 30
-    aliases: [ao_request_timeout]
-  orchestrator_config_file:
+  ao_config_file:
     description:
-      - Path to a configuration file with connection settings.
-    type: path
-    aliases: [ao_config_file]
+      - Path to an additional C(.ao_cli.cfg) configuration file with connection settings.
+      - Standard locations (C(/etc/automation_orchestrator/ao_cli.cfg), C(~/.ao_cli.cfg), and
+        C(.ao_cli.cfg) in the current directory or any parent) are always searched.
+    type: str
+notes:
+  - Exactly one authentication method must be usable, either C(ao_token), C(ao_username) +
+    C(ao_password), or C(ao_client_id) + C(ao_client_secret).
 """

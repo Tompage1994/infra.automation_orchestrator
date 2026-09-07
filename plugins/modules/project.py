@@ -8,6 +8,8 @@ from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
+# This module is implemented as an action plugin (see plugins/action/project.py).
+
 DOCUMENTATION = r"""
 ---
 module: project
@@ -18,6 +20,7 @@ author:
   - Tom Page (@tpage)
 extends_documentation_fragment:
   - infra.automation_orchestrator.auth
+  - infra.automation_orchestrator.state
 options:
   name:
     description:
@@ -32,21 +35,15 @@ options:
     description:
       - Key-value labels for the project.
     type: dict
-  state:
-    description:
-      - Desired state of the project.
-    choices: [present, absent, exists]
-    default: present
-    type: str
 """
 
 EXAMPLES = r"""
 - name: Create a project
   infra.automation_orchestrator.project:
-    orchestrator_host: https://orchestrator.example.com
-    orchestrator_username: admin
-    orchestrator_password: secret
-    validate_certs: false
+    ao_host: https://orchestrator.example.com
+    ao_username: admin
+    ao_password: secret
+    ao_validate_certs: false
     name: my-project
     description: Example project
     state: present
@@ -64,48 +61,6 @@ id:
   type: str
 project:
   description: Project object returned by the API.
-  returned: when state is present and not check mode
+  returned: success
   type: dict
 """
-
-from ansible_collections.infra.automation_orchestrator.plugins.module_utils.orchestrator_api import OrchestratorModule
-
-
-def main():
-    argument_spec = dict(
-        name=dict(required=True),
-        description=dict(),
-        labels=dict(type="dict"),
-        state=dict(choices=["present", "absent", "exists"], default="present"),
-    )
-
-    module = OrchestratorModule(argument_spec=argument_spec)
-    endpoint = "projects"
-
-    existing_item = module.get_one(endpoint, name_or_id=module.params["name"])
-
-    if module.params["state"] == "absent":
-        module.delete_if_needed(existing_item, endpoint, item_type="project")
-
-    if module.params["state"] == "exists":
-        module.get_one(endpoint, name_or_id=module.params["name"], allow_none=False, check_exists=True)
-
-    new_item = {"name": module.params["name"]}
-    if module.params["description"] is not None:
-        new_item["description"] = module.params["description"]
-    if module.params["labels"] is not None:
-        new_item["labels"] = module.params["labels"]
-
-    result = module.create_or_update_if_needed(
-        existing_item,
-        new_item,
-        endpoint=endpoint,
-        item_type="project",
-        auto_exit=False,
-    )
-    module.json_output["project"] = result
-    module.exit_json(**module.json_output)
-
-
-if __name__ == "__main__":
-    main()

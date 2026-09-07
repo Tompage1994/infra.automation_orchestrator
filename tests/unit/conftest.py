@@ -1,7 +1,7 @@
 import os
 import sys
 
-COLLECTION_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
+COLLECTION_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 REPO_ROOT = os.path.dirname(COLLECTION_ROOT)
 ANSIBLE_COLLECTIONS = os.path.join(REPO_ROOT, "ansible_collections")
 

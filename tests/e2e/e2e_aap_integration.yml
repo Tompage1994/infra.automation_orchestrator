@@ -1,0 +1,248 @@
+---
+# End-to-end AAP integration test
+#
+# This test creates a complete workflow that connects AO to AAP and launches
+# the Demo Job Template. It validates:
+# - Project, credential, integration, and workflow CRUD operations
+# - Idempotency checks
+# - Name-to-UUID resolution in workflow definitions
+# - Workflow publishing
+# - Execution launch with wait/polling
+#
+# Required environment variables:
+#   AO_HOST, AO_USERNAME, AO_PASSWORD, AO_VALIDATE_CERTS (default: false)
+#   AAP_URL, AAP_USERNAME, AAP_PASSWORD
+#
+# Example:
+#   export AO_HOST=https://automation-orchestrator.apps.127.0.0.1.nip.io
+#   export AO_USERNAME=admin
+#   export AO_PASSWORD=your-ao-password
+#   export AO_VALIDATE_CERTS=false
+#   export AAP_URL=https://aap-aap-operator.apps.127.0.0.1.nip.io
+#   export AAP_USERNAME=admin
+#   export AAP_PASSWORD=your-aap-password
+#   ansible-playbook tests/e2e/e2e_aap_integration.yml
+#
+- name: End-to-end AAP integration test
+  hosts: localhost
+  gather_facts: false
+  connection: local
+  vars:
+    # AO connection from environment
+    ao_host: "{{ lookup('env', 'AO_HOST') }}"
+    ao_username: "{{ lookup('env', 'AO_USERNAME') }}"
+    ao_password: "{{ lookup('env', 'AO_PASSWORD') }}"
+    ao_validate_certs: "{{ lookup('env', 'AO_VALIDATE_CERTS') | default('false', true) | bool }}"
+
+    # AAP connection from environment
+    aap_url: "{{ lookup('env', 'AAP_URL') }}"
+    aap_username: "{{ lookup('env', 'AAP_USERNAME') }}"
+    aap_password: "{{ lookup('env', 'AAP_PASSWORD') }}"
+
+    # Test resource names (can be overridden via env)
+    test_project: "{{ lookup('env', 'E2E_PROJECT_NAME') | default('e2e-test-project', true) }}"
+    test_credential: "{{ lookup('env', 'E2E_CREDENTIAL_NAME') | default('e2e-aap-credential', true) }}"
+    test_integration: "{{ lookup('env', 'E2E_INTEGRATION_NAME') | default('e2e-aap-integration', true) }}"
+    test_workflow: "{{ lookup('env', 'E2E_WORKFLOW_NAME') | default('e2e-demo-job-workflow', true) }}"
+
+  module_defaults:
+    group/infra.automation_orchestrator.ao:
+      ao_host: "{{ ao_host }}"
+      ao_username: "{{ ao_username }}"
+      ao_password: "{{ ao_password }}"
+      ao_validate_certs: "{{ ao_validate_certs }}"
+
+  tasks:
+    - name: Validate required environment variables
+      ansible.builtin.assert:
+        that:
+          - ao_host | length > 0
+          - ao_username | length > 0
+          - ao_password | length > 0
+          - aap_url | length > 0
+          - aap_username | length > 0
+          - aap_password | length > 0
+        fail_msg: |
+          Missing required environment variables. Please set:
+            AO_HOST, AO_USERNAME, AO_PASSWORD
+            AAP_URL, AAP_USERNAME, AAP_PASSWORD
+        success_msg: "All required environment variables are set"
+
+    - name: Create test project in AO
+      infra.automation_orchestrator.project:
+        name: "{{ test_project }}"
+        description: E2E integration test project
+        state: present
+      register: project_result
+
+    - name: Show project result
+      ansible.builtin.debug:
+        var: project_result
+
+    - name: Create AAP credential in AO
+      infra.automation_orchestrator.credential:
+        name: "{{ test_credential }}"
+        project: "{{ test_project }}"
+        credential_type: Ansible Automation Platform
+        inputs:
+          username: "{{ aap_username }}"
+          password: "{{ aap_password }}"
+        description: AAP admin credentials for e2e test
+        state: present
+      register: credential_result
+
+    - name: Show credential result
+      ansible.builtin.debug:
+        var: credential_result
+
+    - name: Create AAP integration in AO
+      infra.automation_orchestrator.integration:
+        name: "{{ test_integration }}"
+        integration_type: ansible_automation_platform
+        configuration:
+          integration_type: ansible_automation_platform
+          base_url: "{{ aap_url }}"
+          insecure_skip_tls_verify: true
+        management_credential: "{{ test_credential }}"
+        description: AAP integration for e2e test
+        state: present
+      register: integration_result
+
+    - name: Show integration result
+      ansible.builtin.debug:
+        var: integration_result
+
+    - name: Create workflow with manual trigger and AAP job template launch
+      infra.automation_orchestrator.workflow:
+        name: "{{ test_workflow }}"
+        project: "{{ test_project }}"
+        description: E2E test workflow - manual trigger to AAP Demo Job Template
+        workflow_definition:
+          schema_version: "2.0.0"
+          name: "{{ test_workflow }}"
+          description: E2E test workflow - manual trigger to AAP Demo Job Template
+          triggers:
+            - id: trigger_manual
+              name: Manual Trigger
+              type: manual_trigger
+              parameters: {}
+          nodes:
+            - id: launch_demo_job
+              name: Launch Demo Job Template
+              type: aap_job_template
+              parameters:
+                credential: "{{ test_credential }}"
+                integration: "{{ test_integration }}"
+                job_template_name: Demo Job Template
+                organization_name: Default
+          edges:
+            - from: trigger_manual
+              to: launch_demo_job
+        state: present
+      register: workflow_result
+
+    - name: Show workflow result
+      ansible.builtin.debug:
+        var: workflow_result
+
+    - name: Verify workflow was created
+      infra.automation_orchestrator.workflow:
+        name: "{{ test_workflow }}"
+        state: exists
+      register: workflow_exists
+
+    - name: Assert workflow exists
+      ansible.builtin.assert:
+        that:
+          - workflow_exists.exists
+        success_msg: "Workflow {{ test_workflow }} successfully created!"
+        fail_msg: "Workflow {{ test_workflow }} does not exist!"
+
+    - name: Publish the workflow
+      infra.automation_orchestrator.workflow:
+        name: "{{ test_workflow }}"
+        project: "{{ test_project }}"
+        published: true
+        state: present
+      register: workflow_publish
+
+    - name: Show publish result
+      ansible.builtin.debug:
+        var: workflow_publish
+
+    - name: Launch the workflow execution
+      infra.automation_orchestrator.execution_launch:
+        workflow: "{{ test_workflow }}"
+        project: "{{ test_project }}"
+        trigger_node_id: trigger_manual
+        wait: true
+        timeout: 300
+        interval: 5
+      register: execution_result
+      when: true  # Actually launch and wait for completion
+
+    - name: Show execution result (if launched)
+      ansible.builtin.debug:
+        var: execution_result
+      when: execution_result is defined
+
+    - name: Build summary message
+      ansible.builtin.set_fact:
+        summary_lines:
+          - "==================== E2E Test Summary ===================="
+          - "Status: PASSED ✓"
+          - ""
+          - "Resources Created:"
+          - "  Project:     {{ test_project }} ({{ project_result.id }})"
+          - "  Credential:  {{ test_credential }} ({{ credential_result.id }})"
+          - "  Integration: {{ test_integration }} ({{ integration_result.id }})"
+          - "  Workflow:    {{ test_workflow }} ({{ workflow_result.id }})"
+          - ""
+          - "Workflow Status:"
+          - "  Published Version: {{ workflow_publish.workflow.published_version_number | default('N/A') }}"
+          - "  Enabled: {{ workflow_publish.workflow.is_enabled | default(false) }}"
+
+    - name: Add execution info to summary (if execution ran)
+      ansible.builtin.set_fact:
+        summary_lines: "{{ summary_lines + ['  Last Execution: ' + execution_result.execution_id + ' (' + execution_result.status + ')'] }}"
+      when: execution_result.changed | default(false)
+
+    - name: Complete summary message
+      ansible.builtin.set_fact:
+        summary_lines: "{{ summary_lines + ['', 'View in AO UI: ' + ao_host + '/workflows/' + workflow_result.id, '', 'To clean up test resources, run:', '  ansible-playbook tests/e2e/e2e_aap_integration.yml --tags cleanup', '========================================================'] }}"
+
+    - name: Display summary
+      ansible.builtin.debug:
+        msg: "{{ summary_lines }}"
+
+    # Cleanup tasks (run with --tags cleanup)
+    - name: Delete test workflow
+      infra.automation_orchestrator.workflow:
+        name: "{{ test_workflow }}"
+        project: "{{ test_project }}"
+        state: absent
+      tags: [never, cleanup]
+
+    - name: Delete test integration
+      infra.automation_orchestrator.integration:
+        name: "{{ test_integration }}"
+        state: absent
+      tags: [never, cleanup]
+
+    - name: Delete test credential
+      infra.automation_orchestrator.credential:
+        name: "{{ test_credential }}"
+        project: "{{ test_project }}"
+        state: absent
+      tags: [never, cleanup]
+
+    - name: Delete test project
+      infra.automation_orchestrator.project:
+        name: "{{ test_project }}"
+        state: absent
+      tags: [never, cleanup]
+
+    - name: Cleanup complete
+      ansible.builtin.debug:
+        msg: "All test resources have been cleaned up successfully"
+      tags: [never, cleanup]

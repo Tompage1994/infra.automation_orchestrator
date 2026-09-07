@@ -1,9 +1,9 @@
 ---
-requires_ansible: '>=2.15.0'
+requires_ansible: '>=2.16.0'
 action_groups:
-  orchestrator:
+  ao:
     - project
-    - workflow
     - credential
     - integration
     - execution_launch
+    - workflow
