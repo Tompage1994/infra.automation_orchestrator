@@ -215,6 +215,12 @@
       ansible.builtin.debug:
         msg: "{{ summary_lines }}"
 
+    - name: Check the lookup works by displaying the workflow
+      ansible.builtin.debug:
+        msg: "{{ lookup('infra.automation_orchestrator.orchestrator_api', 'workflows',
+                        query_params={'name[eq]': test_workflow},
+                        expect_one=true) }}"
+
     # Cleanup tasks (run with --tags cleanup)
     - name: Delete test workflow
       infra.automation_orchestrator.workflow:

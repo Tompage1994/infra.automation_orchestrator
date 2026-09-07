@@ -45,15 +45,32 @@ options:
 """
 
 EXAMPLES = r"""
-- name: List workflows
+# Using environment variables (recommended)
+# Set AO_HOST, AO_USERNAME, AO_PASSWORD, AO_VALIDATE_CERTS
+- name: List workflows (uses env vars)
   ansible.builtin.debug:
-    msg: >-
-      {{ lookup('infra.automation_orchestrator.orchestrator_api', 'workflows',
-      host='https://orchestrator.example.com', username='admin', password='secret', verify_ssl=false) }}
+    msg: "{{ lookup('infra.automation_orchestrator.orchestrator_api', 'workflows') }}"
 
-- name: Get a project by name
+- name: Get a project by name (uses env vars)
   ansible.builtin.debug:
-    msg: "{{ lookup('infra.automation_orchestrator.orchestrator_api', 'projects', query_params={'name[eq]': 'my-project'}, expect_one=true) }}"
+    msg: "{{ lookup('infra.automation_orchestrator.orchestrator_api', 'projects',
+                     query_params={'name[eq]': 'my-project'},
+                     expect_one=true) }}"
+
+# Explicitly passing connection parameters (overrides env vars)
+- name: List workflows with explicit connection
+  ansible.builtin.debug:
+    msg: "{{ lookup('infra.automation_orchestrator.orchestrator_api', 'workflows',
+                     host='https://orchestrator.example.com',
+                     username='admin',
+                     password='secret',
+                     verify_ssl=false) }}"
+
+- name: Get workflow IDs only
+  ansible.builtin.debug:
+    msg: "{{ lookup('infra.automation_orchestrator.orchestrator_api', 'workflows',
+                     return_ids=true,
+                     return_all=true) }}"
 """
 
 RETURN = r"""
@@ -65,10 +82,21 @@ _raw:
 from ansible.errors import AnsibleError
 from ansible.plugins.lookup import LookupBase
 from ansible.utils.display import Display
+from os import environ
 
 from ansible_collections.infra.automation_orchestrator.plugins.module_utils.orchestrator_api import OrchestratorAPIModule
 
 display = Display()
+
+# Mapping of short param names to their environment variable names
+ENV_VAR_MAPPING = {
+    "host": "AO_HOST",
+    "username": "AO_USERNAME",
+    "password": "AO_PASSWORD",
+    "token": "AO_TOKEN",
+    "verify_ssl": "AO_VALIDATE_CERTS",
+    "request_timeout": "AO_REQUEST_TIMEOUT",
+}
 
 
 class LookupModule(LookupBase):
@@ -77,7 +105,29 @@ class LookupModule(LookupBase):
 
         module_params = {}
         for short_param, long_param in OrchestratorAPIModule.short_params.items():
-            value = self.get_option(short_param)
+            value = None
+
+            # Check if parameter was explicitly passed via kwargs
+            # (not from defaults or env vars in the doc fragment)
+            if short_param in kwargs:
+                value = self.get_option(short_param)
+            # Otherwise check environment variables
+            elif short_param in ENV_VAR_MAPPING:
+                env_var = ENV_VAR_MAPPING[short_param]
+                env_value = environ.get(env_var)
+                if env_value is not None:
+                    # Handle boolean conversion for verify_ssl
+                    if short_param == "verify_ssl":
+                        value = env_value.lower() in ("true", "1", "yes")
+                    # Handle float conversion for request_timeout
+                    elif short_param == "request_timeout":
+                        try:
+                            value = float(env_value)
+                        except ValueError:
+                            value = None
+                    else:
+                        value = env_value
+
             if value is not None:
                 module_params[long_param] = value
 
