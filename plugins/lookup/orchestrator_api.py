@@ -13,7 +13,7 @@ short_description: Query the Automation Orchestrator API
 description:
   - Make a GET request to the Automation Orchestrator API and return the response.
 author:
-  - Tom Page (@tpage)
+  - Tom Page (@Tompage1994)
 extends_documentation_fragment:
   - infra.automation_orchestrator.auth_plugin
 options:

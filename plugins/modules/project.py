@@ -17,7 +17,7 @@ short_description: Manage Automation Orchestrator projects
 description:
   - Create, update, or delete projects in Automation Orchestrator.
 author:
-  - Tom Page (@tpage)
+  - Tom Page (@Tompage1994)
 extends_documentation_fragment:
   - infra.automation_orchestrator.auth
   - infra.automation_orchestrator.state

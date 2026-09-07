@@ -17,7 +17,7 @@ short_description: Manage Automation Orchestrator credentials
 description:
   - Create, update, or delete credentials in Automation Orchestrator.
 author:
-  - Tom Page (@tpage)
+  - Tom Page (@Tompage1994)
 extends_documentation_fragment:
   - infra.automation_orchestrator.auth
   - infra.automation_orchestrator.state

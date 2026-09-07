@@ -18,7 +18,7 @@ description:
   - Trigger a workflow execution and optionally wait for it to complete.
   - This is an action module, not a CRUD resource module; every successful run reports C(changed).
 author:
-  - Tom Page (@tpage)
+  - Tom Page (@Tompage1994)
 extends_documentation_fragment:
   - infra.automation_orchestrator.auth
 options:

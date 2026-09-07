@@ -22,7 +22,7 @@ description:
     C(project_id), C(llm_model_id)) may instead be given as C(credential), C(integration), C(project), or
     C(llm_model) with a human-readable name; the name is resolved to its UUID before the definition is saved.
 author:
-  - Tom Page (@tpage)
+  - Tom Page (@Tompage1994)
 extends_documentation_fragment:
   - infra.automation_orchestrator.auth
   - infra.automation_orchestrator.state
